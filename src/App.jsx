@@ -1,42 +1,54 @@
 import React, { useState } from 'react';
-import { createWorker } from 'tesseract.js';
+import Tesseract from 'tesseract.js';
 import axios from 'axios';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 function App() {
   const [image, setImage] = useState(null);
-  const [imageURL, setImageURL] = useState('');
   const [ocrText, setOcrText] = useState('');
-  const [cleanedText, setCleanedText] = useState('');
   const [aiAnalysis, setAiAnalysis] = useState('');
-  const [loading, setLoading] = useState(false);
 
-  const handleImageUpload = (e) => {
+  const handleImageChange = (e) => {
     const file = e.target.files[0];
-    setImage(file);
-    setImageURL(URL.createObjectURL(file)); // for displaying image
-    setOcrText('');
-    setCleanedText('');
-    setAiAnalysis('');
+    if (file) {
+      setImage(URL.createObjectURL(file));
+      console.log('📸 Image selected:', file.name);
+    }
   };
 
-  const handleProcessCheque = async () => {
-    if (!image) return;
-    setLoading(true);
+  const handleExtractText = async () => {
+    if (!image) {
+      alert('Please upload an image first!');
+      return;
+    }
 
-    // --- Step 1: OCR with Tesseract ---
-    const worker = await createWorker('eng');
-    const {
-      data: { text },
-    } = await worker.recognize(image);
-    await worker.terminate();
+    setOcrText('🔄 Processing with OCR...');
+    setAiAnalysis('');
 
-    setOcrText(text);
-
-    // --- Step 2: GPT AI Cleanup & Smart Analysis ---
+    console.log('🧠 Starting Tesseract OCR...');
     try {
+      const result = await Tesseract.recognize(image, 'eng', {
+        logger: (m) => console.log('📝 Tesseract Log:', m),
+      });
+
+      console.log('✅ OCR result:', result.data.text);
+      setOcrText(result.data.text);
+      handleGPTCleanup(result.data.text);
+    } catch (error) {
+      console.error('❌ OCR Error:', error);
+      setOcrText('❌ Failed to extract text.');
+    }
+  };
+
+  const handleGPTCleanup = async (text) => {
+    setAiAnalysis('⏳ Sending to AI for cleanup...');
+
+    try {
+      console.log('📤 Sending request to Azure OpenAI API...');
+      console.log('🔤 OCR Text:', text);
+
       const response = await axios.post(
-        'https://YOUR_AZURE_ENDPOINT/openai/deployments/YOUR_DEPLOYMENT_NAME/chat/completions?api-version=2023-03-15-preview',
+        'https://<your-resource-name>.openai.azure.com/openai/deployments/<your-deployment-name>/chat/completions?api-version=2023-03-15-preview',
         {
           messages: [
             {
@@ -55,62 +67,62 @@ function App() {
         {
           headers: {
             'Content-Type': 'application/json',
-            'api-key': 'YOUR_AZURE_API_KEY',
+            'api-key': '<your-azure-api-key>',
           },
         }
       );
 
-      const aiOutput = response.data.choices[0].message.content;
+      console.log('✅ GPT Response:', response.data);
 
-      // Split structured fields and analysis based on line breaks (if structured that way)
-      const parts = aiOutput.split(/\n\s*\n/); // split on empty lines
-      setCleanedText(parts[0]);
-      setAiAnalysis(parts.slice(1).join('\n\n'));
+      const message = response.data?.choices?.[0]?.message?.content;
+      if (message) {
+        setAiAnalysis(message);
+      } else {
+        setAiAnalysis('⚠️ AI response was empty.');
+      }
     } catch (error) {
-      console.error('GPT API Error:', error);
-      setAiAnalysis('Failed to get AI cleanup.');
-    }
+      console.error('❌ GPT API Error:', error);
+      console.error('📄 Error Response:', error.response?.data || error.message);
 
-    setLoading(false);
+      setAiAnalysis(
+        '❌ GPT Error: ' +
+          (error.response?.data?.error?.message || error.message || 'Unknown error')
+      );
+    }
   };
 
   return (
     <div className="container mt-5">
-      <h2 className="mb-4">🧠 AI-Powered Cheque Reader</h2>
+      <h2 className="mb-4 text-center">🧾 Cheque AI Analyzer</h2>
 
-      <input type="file" className="form-control mb-3" onChange={handleImageUpload} />
+      <div className="mb-3">
+        <input type="file" accept="image/*" className="form-control" onChange={handleImageChange} />
+      </div>
 
-      <button className="btn btn-primary mb-4" onClick={handleProcessCheque} disabled={loading}>
-        {loading ? 'Processing...' : 'Extract & Analyze Cheque'}
+      {image && (
+        <div className="text-center mb-4">
+          <img src={image} alt="Uploaded" style={{ maxWidth: '100%', maxHeight: 300 }} className="img-thumbnail" />
+        </div>
+      )}
+
+      <button className="btn btn-primary w-100 mb-3" onClick={handleExtractText}>
+        📤 Extract & Clean Text
       </button>
 
-      {imageURL && (
-        <div className="mb-4 text-center">
-          <h5>📷 Uploaded Cheque Preview</h5>
-          <img src={imageURL} alt="Cheque Preview" style={{ maxWidth: '100%', maxHeight: 300 }} className="img-thumbnail" />
+      <div className="row">
+        <div className="col-md-6">
+          <h5>🧾 Raw OCR Text</h5>
+          <pre className="bg-light p-3 rounded" style={{ maxHeight: 300, overflowY: 'auto' }}>
+            {ocrText}
+          </pre>
         </div>
-      )}
-
-      {ocrText && (
-        <div className="mb-4">
-          <h5>📝 Raw OCR Text</h5>
-          <pre className="bg-light p-3">{ocrText}</pre>
+        <div className="col-md-6">
+          <h5>🤖 AI-Cleaned Output</h5>
+          <pre className="bg-light p-3 rounded" style={{ maxHeight: 300, overflowY: 'auto' }}>
+            {aiAnalysis}
+          </pre>
         </div>
-      )}
-
-      {cleanedText && (
-        <div className="mb-4">
-          <h5>✅ Cleaned & Structured (AI)</h5>
-          <pre className="bg-success text-white p-3">{cleanedText}</pre>
-        </div>
-      )}
-
-      {aiAnalysis && (
-        <div className="mb-4">
-          <h5>🧠 AI Insights</h5>
-          <pre className="bg-warning p-3">{aiAnalysis}</pre>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
