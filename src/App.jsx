@@ -25,75 +25,50 @@ function App() {
     setOcrText('🔄 Processing with OCR...');
     setAiAnalysis('');
 
-    console.log('🧠 Starting Tesseract OCR...');
+    console.log('🧠 Starting OCR...');
     try {
       const result = await Tesseract.recognize(image, 'eng', {
         logger: (m) => console.log('📝 Tesseract Log:', m),
       });
 
-      console.log('✅ OCR result:', result.data.text);
-      setOcrText(result.data.text);
-      handleGPTCleanup(result.data.text);
+      const extractedText = result.data.text;
+      console.log('✅ OCR Extracted Text:', extractedText);
+      setOcrText(extractedText);
+
+      handleGPTCleanup(extractedText); // Pass OCR text to AI
     } catch (error) {
-      console.error('❌ OCR Error:', error);
+      console.error('❌ OCR Failed:', error);
       setOcrText('❌ Failed to extract text.');
     }
   };
 
   const handleGPTCleanup = async (text) => {
-    setAiAnalysis('⏳ Sending to AI for cleanup...');
+    setAiAnalysis('⏳ Sending to AI...');
 
     try {
-      console.log('📤 Sending request to Azure OpenAI API...');
-      console.log('🔤 OCR Text:', text);
-
-      const response = await axios.post(
-        'https://<your-resource-name>.openai.azure.com/openai/deployments/<your-deployment-name>/chat/completions?api-version=2023-03-15-preview',
-        {
-          messages: [
-            {
-              role: 'system',
-              content:
-                'You are a cheque validation assistant. From raw OCR text, extract structured fields (Payee, Amount, Date, Bank) and also point out any unclear or possibly missing information.',
-            },
-            {
-              role: 'user',
-              content: `Here is the raw OCR text from a cheque:\n\n"${text}"\n\nPlease return:\n1. Cleaned structured fields in JSON\n2. Comments about issues (e.g., missing/unclear data)`,
-            },
-          ],
-          temperature: 0.3,
-          max_tokens: 300,
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'api-key': '<your-azure-api-key>',
-          },
-        }
-      );
-
-      console.log('✅ GPT Response:', response.data);
+      console.log('📡 Sending POST request to backend...');
+      const response = await axios.post('http://localhost:5000/api/ask', { text });
 
       const message = response.data?.choices?.[0]?.message?.content;
+      console.log('✅ AI Response:', message);
+
       if (message) {
         setAiAnalysis(message);
       } else {
-        setAiAnalysis('⚠️ AI response was empty.');
+        setAiAnalysis('⚠️ Empty AI response.');
       }
     } catch (error) {
-      console.error('❌ GPT API Error:', error);
-      console.error('📄 Error Response:', error.response?.data || error.message);
-
+      console.error('❌ GPT Backend Error:', error);
       setAiAnalysis(
         '❌ GPT Error: ' +
-          (error.response?.data?.error?.message || error.message || 'Unknown error')
+        (error.response?.data?.error?.message || error.message || 'Unknown error')
       );
     }
   };
 
   return (
     <div className="container mt-5">
-      <h2 className="mb-4 text-center">🧾 Cheque AI Analyzer</h2>
+      <h2 className="text-center mb-4">🧾 Cheque AI Analyzer</h2>
 
       <div className="mb-3">
         <input type="file" accept="image/*" className="form-control" onChange={handleImageChange} />
@@ -101,12 +76,12 @@ function App() {
 
       {image && (
         <div className="text-center mb-4">
-          <img src={image} alt="Uploaded" style={{ maxWidth: '100%', maxHeight: 300 }} className="img-thumbnail" />
+          <img src={image} alt="Uploaded" className="img-thumbnail" style={{ maxWidth: '100%', maxHeight: 300 }} />
         </div>
       )}
 
       <button className="btn btn-primary w-100 mb-3" onClick={handleExtractText}>
-        📤 Extract & Clean Text
+        📤 Extract & Analyze Cheque
       </button>
 
       <div className="row">

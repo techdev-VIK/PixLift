@@ -1,24 +1,33 @@
 const express = require('express');
-const axios = require('axios');
 const cors = require('cors');
+const axios = require('axios');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ✅ Replace with your actual Azure values
+const AZURE_URL = 'https://your-resource-name.openai.azure.com/openai/deployments/your-deployment-name/chat/completions?api-version=2023-03-15-preview';
 const AZURE_API_KEY = 'your-azure-api-key';
-const AZURE_ENDPOINT = 'https://<your-resource-name>.openai.azure.com';
-const DEPLOYMENT_NAME = '<your-deployment-name>';
-const API_VERSION = '2023-03-15-preview';
 
 app.post('/api/ask', async (req, res) => {
-  try {
-    const { messages } = req.body;
+  const { text } = req.body;
 
+  try {
     const response = await axios.post(
-      `${AZURE_ENDPOINT}/openai/deployments/${DEPLOYMENT_NAME}/chat/completions?api-version=${API_VERSION}`,
+      AZURE_URL,
       {
-        messages,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a cheque validation assistant. From raw OCR text, extract structured fields (Payee, Amount, Date, Bank) and also point out any unclear or possibly missing information.',
+          },
+          {
+            role: 'user',
+            content: `Here is the raw OCR text from a cheque:\n\n"${text}"\n\nPlease return:\n1. Cleaned structured fields in JSON\n2. Comments about issues (e.g., missing/unclear data)`,
+          },
+        ],
         temperature: 0.3,
         max_tokens: 300,
       },
@@ -32,12 +41,12 @@ app.post('/api/ask', async (req, res) => {
 
     res.json(response.data);
   } catch (error) {
-    console.error('❌ Backend error calling GPT:', error.response?.data || error.message);
-    res.status(500).json({ error: 'GPT backend error', detail: error.message });
+    console.error('❌ Azure GPT Error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'GPT API failed', details: error.response?.data || error.message });
   }
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = 5000;
 app.listen(PORT, () => {
-  console.log(`🚀 Backend proxy running on http://localhost:${PORT}`);
+  console.log(`🚀 Backend running at http://localhost:${PORT}`);
 });
